@@ -50,27 +50,22 @@
     NSLog(@"FTXUITerminalView updateContent #%ld called, content changed: %@",
           (long)self.updateCount, contentChanged ? @"YES" : @"NO");
 
-    if (contentChanged || !self.terminalContent)
-    {
-        NSLog(@"Content: %@", content);
-        self.terminalContent = content;
-        [self setNeedsDisplay:YES];
+    // Always update content and display, even if it appears unchanged
+    // This helps with initial rendering and edge cases
+    NSLog(@"Content: %@", content);
+    self.terminalContent = content;
+    [self setNeedsDisplay:YES];
 
-        // Force an immediate display update instead of waiting for the next run loop
-        [self displayIfNeeded];
-    }
-    else
-    {
-        NSLog(@"Content unchanged, skipping display update");
-    }
+    // Force an immediate display update instead of waiting for the next run loop
+    [self displayIfNeeded];
 }
 
 - (void)drawRect:(NSRect)dirtyRect
 {
     [super drawRect:dirtyRect];
 
-    NSLog(@"drawRect called, bounds: %@, terminalContent: %@", NSStringFromRect(self.bounds),
-          self.terminalContent);
+    NSLog(@"drawRect called, bounds: %@, terminalContent length: %lu",
+          NSStringFromRect(self.bounds), (unsigned long)[self.terminalContent length]);
 
     // For debugging, always show some text even if terminalContent is nil
     NSString *textToRender = self.terminalContent;
@@ -81,6 +76,8 @@
     }
     else
     {
+        NSLog(@"Rendering actual terminal content, original length: %lu",
+              (unsigned long)[textToRender length]);
         // Strip ANSI escape sequences for now (like [1m, [22m)
         NSError *error = nil;
         NSRegularExpression *ansiRegex =
@@ -89,11 +86,20 @@
                                                         error:&error];
         if (!error)
         {
-            textToRender =
+            NSString *strippedText =
                 [ansiRegex stringByReplacingMatchesInString:textToRender
                                                     options:0
                                                       range:NSMakeRange(0, [textToRender length])
                                                withTemplate:@""];
+            NSLog(@"After ANSI stripping, length: %lu", (unsigned long)[strippedText length]);
+            textToRender = strippedText;
+        }
+
+        // Ensure we have content after stripping
+        if ([textToRender length] == 0)
+        {
+            NSLog(@"Content became empty after ANSI stripping, using fallback");
+            textToRender = @"FTXUI Content (ANSI stripped to empty)";
         }
     }
 
@@ -116,7 +122,8 @@
 
     NSRect textRect = NSMakeRect(5, 5, self.bounds.size.width - 10, self.bounds.size.height - 10);
 
-    NSLog(@"Drawing text in rect: %@", NSStringFromRect(textRect));
+    NSLog(@"Drawing text in rect: %@, text length: %lu", NSStringFromRect(textRect),
+          (unsigned long)textToRender.length);
     [attributedString drawInRect:textRect];
 }
 
